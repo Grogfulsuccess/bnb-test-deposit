@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Test Dépôt/Retrait BNB Testnet</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- ethers.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.min.js"></script>
+</head>
+<body>
+  <main class="card">
+    <h1>Test BNB (BSC Testnet) — Dépôt & Retrait</h1>
+
+    <section class="panel">
+      <h2>Connexion Wallet</h2>
+      <button id="connectBtn">Connecter MetaMask</button>
+      <div id="account">Non connecté</div>
+      <div id="network">Réseau : inconnu</div>
+    </section>
+
+    <section class="panel">
+      <h2>Dépôt (envoyer BNB → adresse service)</h2>
+      <label>Montant (BNB) :</label>
+      <input id="depositAmount" type="number" step="0.000001" value="0.01" />
+      <button id="depositBtn">Déposer (ouvrir MetaMask)</button>
+      <div id="depositStatus"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Retrait (demande signée)</h2>
+      <label>Montant (BNB) :</label>
+      <input id="withdrawAmount" type="number" step="0.000001" value="0.005" />
+      <label>Adresse destinataire :</label>
+      <input id="withdrawAddress" type="text" placeholder="0x..." />
+      <button id="withdrawBtn">Demander retrait (signer)</button>
+      <div id="withdrawStatus"></div>
+    </section>
+
+    <footer>
+      <small>Assure-toi d’être sur le BSC Testnet (chainId 97). Voir `script.js` pour la configuration.</small>
+    </footer>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
