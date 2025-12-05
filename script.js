@@ -14,6 +14,7 @@ const connectBtn = document.getElementById('connectBtn');
 const wcBtn = document.getElementById('walletconnectBtn');
 const accountDiv = document.getElementById('account');
 const networkDiv = document.getElementById('network');
+const wcDebug = document.getElementById('wcDebug');
 const depositBtn = document.getElementById('depositBtn');
 const depositAmountInput = document.getElementById('depositAmount');
 const depositStatus = document.getElementById('depositStatus');
@@ -35,19 +36,16 @@ function shortAddr(a) {
 }
 
 async function init() {
-  // Evénements UI
   connectBtn.addEventListener('click', connectInjected);
   wcBtn.addEventListener('click', connectWalletConnect);
   depositBtn.addEventListener('click', doDeposit);
   withdrawBtn.addEventListener('click', requestWithdraw);
 
-  // Si injected provider présent (MetaMask, Trust...)
   if (window.ethereum) {
-    // Optional: auto show available
-    // Listen for changes if user connects injected later
     window.ethereum.on && window.ethereum.on('accountsChanged', handleAccountsChanged);
     window.ethereum.on && window.ethereum.on('chainChanged', handleChainChanged);
   }
+  wcDebug.innerText = "Ready.";
 }
 
 // ---------- Connection Injected (MetaMask, Trust Wallet in-app browser) ----------
@@ -58,9 +56,7 @@ async function connectInjected(){
       return;
     }
     currentProviderType = 'injected';
-    // Request accounts
     await window.ethereum.request({ method: 'eth_requestAccounts' });
-    // Create ethers provider/wrapper
     ethersProvider = new ethers.BrowserProvider(window.ethereum);
     signer = await ethersProvider.getSigner();
     userAddress = await signer.getAddress();
@@ -70,75 +66,87 @@ async function connectInjected(){
     if (network.chainId !== TARGET_CHAIN_ID) {
       networkDiv.innerText += ` — Veuillez switcher sur ${CHAIN_NAME} (chainId ${TARGET_CHAIN_ID})`;
     }
+    wcDebug.innerText = "Connected (injected).";
   } catch (e) {
     console.error(e);
     accountDiv.innerText = "Connexion refusée ou erreur (injected).";
+    wcDebug.innerText = "Injected connect error: " + (e.message || e);
   }
 }
 
 // ---------- Connection WalletConnect (SafePal, Trust Wallet via WalletConnect) ----------
 async function connectWalletConnect(){
   try {
-    // Si déjà connecté via WalletConnect, reuse
-    if (wcProviderInstance && wcProviderInstance.wc && wcProviderInstance.wc.connected) {
-      // create ethers provider wrapper around the provider
-      ethersProvider = new ethers.BrowserProvider(wcProviderInstance);
-      signer = await ethersProvider.getSigner();
-      userAddress = await signer.getAddress();
-      currentProviderType = 'walletconnect';
-      accountDiv.innerText = `Connecté (WC) : ${shortAddr(userAddress)}`;
-      const net = await ethersProvider.getNetwork();
-      networkDiv.innerText = `Réseau : ${net.name} (chainId ${net.chainId})`;
-      if (net.chainId !== TARGET_CHAIN_ID) networkDiv.innerText += ` — Veuillez switcher sur ${CHAIN_NAME}`;
-      return;
-    }
+    wcDebug.innerText = "WC: starting connection...";
+    console.log("WC: starting connection...");
 
-    // Initialise WalletConnectProvider via l'UMD export
+    // ensure WalletConnectProvider available
     const WalletConnectProvider = window.WalletConnectProvider && window.WalletConnectProvider.default
       ? window.WalletConnectProvider.default
-      : window.WalletConnectProvider; // fallback
-
+      : window.WalletConnectProvider;
     if (!WalletConnectProvider) {
-      alert("WalletConnect Provider non trouvé. Vérifie la balise <script> CDN.");
+      alert("WalletConnect Provider non trouvé — vérifie le script CDN.");
+      wcDebug.innerText = "WC provider not found.";
       return;
     }
 
-    // create provider instance
+    // create instance (qrcode false, we handle modal manually)
     wcProviderInstance = new WalletConnectProvider({
-      rpc: {
-        97: RPC_URL,
-        56: "https://bsc-dataseed.binance.org/" // optional mainnet fallback
-      },
+      rpc: { 97: RPC_URL, 56: "https://bsc-dataseed.binance.org/" },
       chainId: TARGET_CHAIN_ID,
-      qrcodeModalOptions: {
-        mobileLinks: ["metamask", "trust", "safe", "rainbow", "argent"] // aide
+      qrcode: false
+    });
+
+    // Enable with timeout (8s)
+    const enablePromise = wcProviderInstance.enable();
+    const timeoutMs = 8000;
+    const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error("WC enable timeout")), timeoutMs));
+
+    await Promise.race([enablePromise, timeoutPromise]).catch(async (err) => {
+      console.warn("WC enable race result:", err);
+      wcDebug.innerText = "WC enable timeout/fallback...";
+      // Fallback: show QR modal (desktop) or instruct user (mobile)
+      const uri = wcProviderInstance.connector && wcProviderInstance.connector.uri;
+      console.log("WC uri:", uri);
+      if (uri && window.WalletConnectQRCodeModal) {
+        wcDebug.innerText = "WC fallback: showing QR modal (desktop).";
+        window.WalletConnectQRCodeModal.open(uri, () => {
+          console.log("QR modal closed");
+          wcDebug.innerText = "QR modal closed";
+        });
+        // Wait for user to connect via QR (or deep link)
+        await wcProviderInstance.enable();
+        // close modal if open
+        window.WalletConnectQRCodeModal.close();
+      } else {
+        // No uri -> probably mobile deep link issue. Show instructions.
+        alert("La liaison WalletConnect prend trop de temps.\nSi tu es sur mobile :\n• Ouvre SafePal → Menu → WalletConnect → Scanner/Deep link\n• Ou ouvre la page dans le navigateur du wallet (MetaMask Browser) et réessaye.\nSi tu es sur desktop : recharge et réessaie pour voir le QR.");
+        throw err;
       }
     });
 
-    // enable triggers QR / deep link
-    await wcProviderInstance.enable();
-
-    // wrap with ethers
+    // If we arrive here, enable succeeded
     ethersProvider = new ethers.BrowserProvider(wcProviderInstance);
     signer = await ethersProvider.getSigner();
     userAddress = await signer.getAddress();
     currentProviderType = 'walletconnect';
     accountDiv.innerText = `Connecté (WC) : ${shortAddr(userAddress)}`;
-
-    // network info
     const net = await ethersProvider.getNetwork();
     networkDiv.innerText = `Réseau : ${net.name} (chainId ${net.chainId})`;
     if (net.chainId !== TARGET_CHAIN_ID) networkDiv.innerText += ` — Veuillez switcher votre wallet sur ${CHAIN_NAME}`;
+    wcDebug.innerText = "Connected via WalletConnect.";
+    console.log("WC connected:", userAddress);
 
-    // Optionnel : handle disconnect
+    // handle disconnect
     wcProviderInstance.on && wcProviderInstance.on("disconnect", (code, reason) => {
       console.log("WC disconnect", code, reason);
       resetConnection();
     });
 
   } catch (e) {
-    console.error("WC connect error", e);
-    alert("Connexion WalletConnect annulée ou erreur.");
+    console.error("WC connect error final:", e);
+    alert("Erreur de connexion WalletConnect. Voir console pour détails.");
+    wcDebug.innerText = "WC error: " + (e.message || e);
   }
 }
 
@@ -152,7 +160,7 @@ async function handleAccountsChanged(accounts){
   }
 }
 function handleChainChanged(_chainId) {
-  // reload to refresh provider state (simple)
+  // simple: reload
   window.location.reload();
 }
 function resetConnection(){
@@ -162,7 +170,7 @@ function resetConnection(){
   currentProviderType = null;
   accountDiv.innerText = "Non connecté";
   networkDiv.innerText = "Réseau : inconnu";
-  // if walletconnect instance exists, try to close session
+  wcDebug.innerText = "Reset connection.";
   if (wcProviderInstance && wcProviderInstance.disconnect) {
     try { wcProviderInstance.disconnect(); } catch(e){/*ignore*/ }
     wcProviderInstance = null;
