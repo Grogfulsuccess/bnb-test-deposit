@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Test Dépôt/Retrait BNB Testnet</title>
   <link rel="stylesheet" href="style.css">
-  <!-- ethers.js CDN -->
+  <!-- ethers.js -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.min.js"></script>
-  <!-- WalletConnect Provider (UMD) pour connecter SafePal, TrustWallet, etc. -->
+  <!-- WalletConnect Provider (UMD) -->
   <script src="https://cdn.jsdelivr.net/npm/@walletconnect/web3-provider@1.7.8/dist/umd/index.min.js"></script>
+  <!-- WalletConnect QR Code Modal (UMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/@walletconnect/qrcode-modal@1.6.0/dist/umd/index.min.js"></script>
 </head>
 <body>
   <main class="card">
@@ -22,6 +24,7 @@
       </div>
       <div id="account">Non connecté</div>
       <div id="network">Réseau : inconnu</div>
+      <div id="wcDebug" style="margin-top:8px;color:#9aa4b2;font-size:13px;"></div>
     </section>
 
     <section class="panel">
