@@ -1,22 +1,17 @@
 // ====== CONFIG - MODIFIE AVANT TEST si besoin ======
-// Chaîne & RPC (info provenant de ta capture d'écran)
 const CHAIN_NAME = "BNB Smart Chain Testnet";
 const TARGET_CHAIN_ID = 97; // BSC Testnet
-const RPC_URL = "https://data-seed-prebsc-1-s1.binance.org:8545/"; // attention parfois différents endpoints / ports
+const RPC_URL = "https://data-seed-prebsc-1-s1.binance.org:8545/";
 const EXPLORER = "https://testnet.bscscan.com";
-const CURRENCY_SYMBOL = "tBNB"; // selon MetaMask screenshot
+const CURRENCY_SYMBOL = "tBNB";
 
-// Adresse qui reçoit les dépôts (ton service / hot wallet).
-// Remplace par ton adresse si tu veux une autre.
-// NOTE : Je mets ici l'adresse mentionnée précédemment dans ton projet si c'est OK pour toi.
-// Si tu veux autre adresse, remplace la valeur ci-dessous.
-const RECEIVER_ADDRESS = "0x84B1CeB4642F0a837526d85caCbcBE5F9B8764c0"; // <-- Remplace si nécessaire
-
-// Décimales de BNB (native) = 18
+// Adresse réception des dépôts (remplace si besoin)
+const RECEIVER_ADDRESS = "0x1be22251704335F0Be0776a490F479ADBBda6f72";
 const BNB_DECIMALS = 18;
 
-// ====== UI SELECTORS ======
+// UI
 const connectBtn = document.getElementById('connectBtn');
+const wcBtn = document.getElementById('walletconnectBtn');
 const accountDiv = document.getElementById('account');
 const networkDiv = document.getElementById('network');
 const depositBtn = document.getElementById('depositBtn');
@@ -27,61 +22,162 @@ const withdrawAmountInput = document.getElementById('withdrawAmount');
 const withdrawAddressInput = document.getElementById('withdrawAddress');
 const withdrawStatus = document.getElementById('withdrawStatus');
 
-let provider, signer, userAddress;
+let ethersProvider = null; // ethers BrowserProvider
+let signer = null;
+let userAddress = null;
+let currentProviderType = null; // "injected" or "walletconnect"
+let wcProviderInstance = null; // WalletConnect provider instance (if utilisé)
+
+// Helper : format short address
+function shortAddr(a) {
+  if (!a) return '';
+  return a.slice(0,6) + '...' + a.slice(-4);
+}
 
 async function init() {
+  // Evénements UI
+  connectBtn.addEventListener('click', connectInjected);
+  wcBtn.addEventListener('click', connectWalletConnect);
+  depositBtn.addEventListener('click', doDeposit);
+  withdrawBtn.addEventListener('click', requestWithdraw);
+
+  // Si injected provider présent (MetaMask, Trust...)
   if (window.ethereum) {
-    provider = new ethers.BrowserProvider(window.ethereum);
-    connectBtn.addEventListener('click', connectWallet);
-    depositBtn.addEventListener('click', doDeposit);
-    withdrawBtn.addEventListener('click', requestWithdraw);
-    window.ethereum.on('accountsChanged', handleAccountsChanged);
-    window.ethereum.on('chainChanged', handleChainChanged);
-  } else {
-    accountDiv.innerText = "MetaMask non détecté — installe MetaMask ou Wallet compatible";
+    // Optional: auto show available
+    // Listen for changes if user connects injected later
+    window.ethereum.on && window.ethereum.on('accountsChanged', handleAccountsChanged);
+    window.ethereum.on && window.ethereum.on('chainChanged', handleChainChanged);
   }
 }
 
-async function connectWallet(){
+// ---------- Connection Injected (MetaMask, Trust Wallet in-app browser) ----------
+async function connectInjected(){
   try {
-    await provider.send("eth_requestAccounts", []);
-    signer = await provider.getSigner();
+    if (!window.ethereum) {
+      alert("Aucun provider injecté détecté. Utilise MetaMask mobile/extension ou essaye WalletConnect (bouton WalletConnect).");
+      return;
+    }
+    currentProviderType = 'injected';
+    // Request accounts
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    // Create ethers provider/wrapper
+    ethersProvider = new ethers.BrowserProvider(window.ethereum);
+    signer = await ethersProvider.getSigner();
     userAddress = await signer.getAddress();
-    accountDiv.innerText = `Connecté : ${userAddress}`;
-    const network = await provider.getNetwork();
+    accountDiv.innerText = `Connecté : ${shortAddr(userAddress)}`;
+    const network = await ethersProvider.getNetwork();
     networkDiv.innerText = `Réseau : ${network.name} (chainId ${network.chainId})`;
     if (network.chainId !== TARGET_CHAIN_ID) {
       networkDiv.innerText += ` — Veuillez switcher sur ${CHAIN_NAME} (chainId ${TARGET_CHAIN_ID})`;
     }
   } catch (e) {
     console.error(e);
-    accountDiv.innerText = "Connexion refusée ou erreur";
+    accountDiv.innerText = "Connexion refusée ou erreur (injected).";
   }
 }
 
+// ---------- Connection WalletConnect (SafePal, Trust Wallet via WalletConnect) ----------
+async function connectWalletConnect(){
+  try {
+    // Si déjà connecté via WalletConnect, reuse
+    if (wcProviderInstance && wcProviderInstance.wc && wcProviderInstance.wc.connected) {
+      // create ethers provider wrapper around the provider
+      ethersProvider = new ethers.BrowserProvider(wcProviderInstance);
+      signer = await ethersProvider.getSigner();
+      userAddress = await signer.getAddress();
+      currentProviderType = 'walletconnect';
+      accountDiv.innerText = `Connecté (WC) : ${shortAddr(userAddress)}`;
+      const net = await ethersProvider.getNetwork();
+      networkDiv.innerText = `Réseau : ${net.name} (chainId ${net.chainId})`;
+      if (net.chainId !== TARGET_CHAIN_ID) networkDiv.innerText += ` — Veuillez switcher sur ${CHAIN_NAME}`;
+      return;
+    }
+
+    // Initialise WalletConnectProvider via l'UMD export
+    const WalletConnectProvider = window.WalletConnectProvider && window.WalletConnectProvider.default
+      ? window.WalletConnectProvider.default
+      : window.WalletConnectProvider; // fallback
+
+    if (!WalletConnectProvider) {
+      alert("WalletConnect Provider non trouvé. Vérifie la balise <script> CDN.");
+      return;
+    }
+
+    // create provider instance
+    wcProviderInstance = new WalletConnectProvider({
+      rpc: {
+        97: RPC_URL,
+        56: "https://bsc-dataseed.binance.org/" // optional mainnet fallback
+      },
+      chainId: TARGET_CHAIN_ID,
+      qrcodeModalOptions: {
+        mobileLinks: ["metamask", "trust", "safe", "rainbow", "argent"] // aide
+      }
+    });
+
+    // enable triggers QR / deep link
+    await wcProviderInstance.enable();
+
+    // wrap with ethers
+    ethersProvider = new ethers.BrowserProvider(wcProviderInstance);
+    signer = await ethersProvider.getSigner();
+    userAddress = await signer.getAddress();
+    currentProviderType = 'walletconnect';
+    accountDiv.innerText = `Connecté (WC) : ${shortAddr(userAddress)}`;
+
+    // network info
+    const net = await ethersProvider.getNetwork();
+    networkDiv.innerText = `Réseau : ${net.name} (chainId ${net.chainId})`;
+    if (net.chainId !== TARGET_CHAIN_ID) networkDiv.innerText += ` — Veuillez switcher votre wallet sur ${CHAIN_NAME}`;
+
+    // Optionnel : handle disconnect
+    wcProviderInstance.on && wcProviderInstance.on("disconnect", (code, reason) => {
+      console.log("WC disconnect", code, reason);
+      resetConnection();
+    });
+
+  } catch (e) {
+    console.error("WC connect error", e);
+    alert("Connexion WalletConnect annulée ou erreur.");
+  }
+}
+
+// ---------- Helpers pour changements ----------
 async function handleAccountsChanged(accounts){
-  if (accounts.length === 0) {
-    accountDiv.innerText = "Disconnected";
+  if (!accounts || accounts.length === 0) {
+    resetConnection();
   } else {
     userAddress = accounts[0];
-    accountDiv.innerText = `Connecté : ${userAddress}`;
+    accountDiv.innerText = `Connecté : ${shortAddr(userAddress)}`;
   }
 }
 function handleChainChanged(_chainId) {
-  // Recharger la page pour mettre à jour provider/signers
+  // reload to refresh provider state (simple)
   window.location.reload();
 }
+function resetConnection(){
+  ethersProvider = null;
+  signer = null;
+  userAddress = null;
+  currentProviderType = null;
+  accountDiv.innerText = "Non connecté";
+  networkDiv.innerText = "Réseau : inconnu";
+  // if walletconnect instance exists, try to close session
+  if (wcProviderInstance && wcProviderInstance.disconnect) {
+    try { wcProviderInstance.disconnect(); } catch(e){/*ignore*/ }
+    wcProviderInstance = null;
+  }
+}
 
-// Dépôt : crée une transaction native BNB vers RECEIVER_ADDRESS
+// ---------- Dépôt BNB (transaction native) ----------
 async function doDeposit(){
   depositStatus.innerText = "";
-  if (!signer) return depositStatus.innerText = "Connecte ton wallet d'abord.";
+  if (!signer) return depositStatus.innerText = "Connecte ton wallet d'abord (Injected ou WalletConnect).";
   if (!RECEIVER_ADDRESS || !RECEIVER_ADDRESS.startsWith('0x')) return depositStatus.innerText = "Configure RECEIVER_ADDRESS dans script.js";
   const amt = depositAmountInput.value;
   if (!amt || Number(amt) <= 0) return depositStatus.innerText = "Montant invalide";
   try {
-    depositStatus.innerText = "Ouverture de MetaMask pour signer la transaction native BNB...";
-    // parse amount to wei (BNB uses 18 decimals)
+    depositStatus.innerText = "Ouverture du wallet pour signer la transaction...";
     const value = ethers.parseUnits(amt.toString(), BNB_DECIMALS);
     const tx = await signer.sendTransaction({
       to: RECEIVER_ADDRESS,
@@ -96,8 +192,7 @@ async function doDeposit(){
   }
 }
 
-// Retrait : on crée une "demande" signée par l'utilisateur
-// Le service centralisé récupère cette demande, la vérifie et paie depuis son coffre.
+// ---------- Demande de retrait (signature) ----------
 async function requestWithdraw(){
   withdrawStatus.innerText = "";
   if (!signer) return withdrawStatus.innerText = "Connecte ton wallet d'abord.";
@@ -117,19 +212,17 @@ async function requestWithdraw(){
       nonce: Math.floor(Math.random()*1e9)
     };
     const message = JSON.stringify(payload);
-    withdrawStatus.innerText = "Ouverture MetaMask pour signer la demande de retrait...";
-    // signer la demande (personal_sign)
+    withdrawStatus.innerText = "Ouverture du wallet pour signer la demande de retrait...";
     const sig = await signer.signMessage(message);
-    // Le JSON résultant à envoyer au backend :
     const requestObject = { payload, signature: sig };
-    // Pour test : on affiche le JSON dans une nouvelle fenêtre
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(requestObject, null, 2));
     window.open(dataStr, "_blank");
-    withdrawStatus.innerText = "Demande signée — JSON ouvert dans un nouvel onglet. (Envoyer ce JSON à ton backend pour traitement)";
+    withdrawStatus.innerText = "Demande signée — JSON ouvert dans un nouvel onglet. Envoie ce JSON au backend.";
   } catch (e) {
     console.error(e);
     withdrawStatus.innerText = `Erreur: ${e.message || e}`;
   }
 }
 
+// init
 init();
