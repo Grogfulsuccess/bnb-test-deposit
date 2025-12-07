@@ -36,9 +36,11 @@ jobs:
           firebase projects:list --json || true
 
       - name: Install functions dependencies
-        working-directory: functions
+        working-directory: ./functions
         run: |
-          npm ci || npm install
+          # Use legacy-peer-deps to avoid ERESOLVE peer dependency errors
+          npm install --legacy-peer-deps
+
 
       - name: Set Firebase functions config (wallet secret) 
         env:
