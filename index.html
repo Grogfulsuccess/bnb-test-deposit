@@ -1,55 +1,46 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Test Dépôt/Retrait BNB Testnet</title>
-  <link rel="stylesheet" href="style.css">
-  <!-- ethers.js -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.min.js"></script>
-  <!-- WalletConnect Provider (UMD) -->
-  <script src="https://cdn.jsdelivr.net/npm/@walletconnect/web3-provider@1.7.8/dist/umd/index.min.js"></script>
-  <!-- WalletConnect QR Code Modal (UMD) -->
-  <script src="https://cdn.jsdelivr.net/npm/@walletconnect/qrcode-modal@1.6.0/dist/umd/index.min.js"></script>
+  <meta charset="utf-8">
+  <title>BNB Invest - Dépôt / Retrait</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    /* style minimal */
+    body{font-family:Arial;padding:18px;max-width:720px;margin:auto}
+    input,button{padding:8px;margin:6px 0;width:100%}
+  </style>
 </head>
 <body>
-  <main class="card">
-    <h1>Test BNB (BSC Testnet) — Dépôt & Retrait</h1>
+  <h2>BNB Invest — Dépôt / Retrait</h2>
 
-    <section class="panel">
-      <h2>Connexion Wallet</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button id="connectBtn">Connecter (Injected)</button>
-        <button id="walletconnectBtn">Connecter (WalletConnect)</button>
-      </div>
-      <div id="account">Non connecté</div>
-      <div id="network">Réseau : inconnu</div>
-      <div id="wcDebug" style="margin-top:8px;color:#9aa4b2;font-size:13px;"></div>
-    </section>
+  <div id="auth">
+    <input id="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Mot de passe">
+    <button id="signup">S'inscrire</button>
+    <button id="login">Se connecter</button>
+  </div>
 
-    <section class="panel">
-      <h2>Dépôt (envoyer BNB → adresse service)</h2>
-      <label>Montant (BNB) :</label>
-      <input id="depositAmount" type="number" step="0.000001" value="0.01" />
-      <button id="depositBtn">Déposer (ouvrir le wallet)</button>
-      <div id="depositStatus"></div>
-    </section>
+  <div id="app" style="display:none">
+    <p>Adresse dépôt (envoie BNB ici) : <code id="depositAddr">0x84B1CeB4...c0</code></p>
+    <hr>
 
-    <section class="panel">
-      <h2>Retrait (demande signée)</h2>
-      <label>Montant (BNB) :</label>
-      <input id="withdrawAmount" type="number" step="0.000001" value="0.005" />
-      <label>Adresse destinataire :</label>
-      <input id="withdrawAddress" type="text" placeholder="0x..." />
-      <button id="withdrawBtn">Demander retrait (signer)</button>
-      <div id="withdrawStatus"></div>
-    </section>
+    <h3>Signaler un dépôt</h3>
+    <input id="txHash" placeholder="Hash transaction (ex: 0x...)">
+    <input id="depositAmount" placeholder="Montant envoyé (BNB) — optionnel">
+    <button id="reportDeposit">Signaler dépôt (vérification on-chain)</button>
 
-    <footer>
-      <small>Assure-toi d’être sur le BSC Testnet (chainId 97). Voir `script.js` pour la configuration.</small>
-    </footer>
-  </main>
+    <hr>
+    <h3>Retrait</h3>
+    <input id="destAddress" placeholder="Ton adresse BSC pour retrait">
+    <input id="withdrawAmount" placeholder="Montant à retirer (BNB)">
+    <button id="requestWithdraw">Demander retrait</button>
 
-  <script src="script.js"></script>
+    <hr>
+    <p>Solde (BNB) : <span id="balance">0</span></p>
+    <div id="messages"></div>
+    <button id="logout">Se déconnecter</button>
+  </div>
+
+  <script type="module" src="main.js"></script>
 </body>
 </html>
