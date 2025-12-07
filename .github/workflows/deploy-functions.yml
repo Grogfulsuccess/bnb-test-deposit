@@ -36,7 +36,7 @@ jobs:
           firebase projects:list --json || true
 
       - name: Install functions dependencies
-        working-directory: bnb-test-deposit/functions
+        working-directory: functions
         run: |
           npm ci || npm install
 
